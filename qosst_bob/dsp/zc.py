@@ -77,19 +77,25 @@ def synchronisation_zc(
     logger.debug("Approximative position found at %i.", approx_zc)
     zadoff_chu = zcsequence(zc_root, zc_length)
     zadoff_chu = np.repeat(zadoff_chu, int(resample))
+
+    n = len(zadoff_chu)
     logger.debug(
         "Upsampling sequence with resample value %f. New length is %i",
         resample,
-        len(zadoff_chu),
+        n,
     )
-    data_zc = data[approx_zc - 2 * len(zadoff_chu) : approx_zc + 2 * len(zadoff_chu)]
+
+    xcorr_start_point = max(approx_zc - 2 * n, 0)
+    xcorr_end_point = min(approx_zc + 2 * n, len(data))
+    data_zc = data[xcorr_start_point:xcorr_end_point]
     lags = signal.correlation_lags(len(data_zc), len(zadoff_chu), mode="same")
     if use_abs:
         xcorr = signal.correlate(np.abs(data_zc), np.abs(zadoff_chu), mode="same")
     else:
         xcorr = signal.correlate(data_zc, zadoff_chu, mode="same")
 
-    begin_zc = lags[np.argmax(xcorr)] + approx_zc - 2 * len(zadoff_chu)
-    end_zc = len(zadoff_chu) + begin_zc
-    logger.debug("Begin was found at %i and end at %i", begin_zc, end_zc)
-    return begin_zc, end_zc
+    beginning_zc = lags[np.argmax(xcorr)] + xcorr_start_point
+    end_zc = len(zadoff_chu) + beginning_zc
+
+    logger.debug("Beginning was found at %i and end at %i", beginning_zc, end_zc)
+    return beginning_zc, end_zc

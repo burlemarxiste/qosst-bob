@@ -1017,17 +1017,18 @@ def _dsp_bob_general(
 
     ratio_approx = 50
     num_points = 10000000
+
+    # Use the base DAC rate if the sample rate of the ZC sequence has not been
+    # provided.
+    if zc_rate == 0:
+        zc_rate = dac_rate
     sps_approx = int(adc_rate / zc_rate)
     approx_zc = int(
         np.argmax(uniform_filter1d(np.abs(data), int(len(data) / ratio_approx)))
         - int(len(data) / ratio_approx) / 2
     )
-    data_pilots = data[
-        approx_zc
-        + 2 * 3989 * sps_approx : approx_zc
-        + 2 * 3989 * sps_approx
-        + num_points
-    ]
+    pilot_start_point = approx_zc + 2 * zc_length * sps_approx
+    data_pilots = data[pilot_start_point:pilot_start_point+num_points]
     f_pilot_real_1, f_pilot_real_2 = find_two_pilots(data_pilots, adc_rate, excl=excl)
     logger.info(
         "Pilots found at %f MHz and %f MHz",
@@ -1083,8 +1084,6 @@ def _dsp_bob_general(
         dsp_debug.real_pilot_frequencies = [f_pilot_real_1, f_pilot_real_2]
         dsp_debug.beat_frequency = f_beat
 
-    if zc_rate == 0:
-        zc_rate = dac_rate
     begin_zc, end_zc = synchronisation_zc(
         data * np.exp(-1j * 2 * np.pi * np.arange(len(data)) * f_beat / equi_adc_rate),
         zc_root,
@@ -1143,7 +1142,7 @@ def _dsp_bob_general(
 
         # Find beat frequency
         f_pilot_real_1 = find_one_pilot(subframe_data, equi_adc_rate, excl=excl)
-        logger.info("Subframe pilot found at %f", f_pilot_real_1 * 1e-6)
+        logger.info("Subframe pilot found at %f MHz", f_pilot_real_1 * 1e-6)
 
         f_beat = f_pilot_real_1 - f_pilot_1
 
