@@ -1267,12 +1267,14 @@ def find_global_angle(
 
     max_angle = 0
     max_cov = 0
+    a = sent_data
+    n = len(a)
     for angle in angles:
-        stack = np.stack((sent_data, received_data * np.exp(1j * angle)), axis=0)
-        cov = np.cov(stack)
-        if cov[0][1].real > max_cov:
+        b = received_data * np.exp(1j * angle)
+        cov_0_1 = np.vdot(b - b.mean(), a - a.mean()) / (n - 1)
+        if cov_0_1.real > max_cov:
             max_angle = angle
-            max_cov = cov[0][1].real
+            max_cov = cov_0_1.real
 
     logger.debug(
         "Global angle found : %.2f rad with covariance : %.2f", max_angle, max_cov
