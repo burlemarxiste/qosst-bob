@@ -27,6 +27,8 @@ from scipy.ndimage import uniform_filter1d
 
 from qosst_core.comm.zc import zcsequence
 
+from .resample import upsample
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,13 +72,14 @@ def synchronisation_zc(
     logger.debug(
         "Computing rolling average to get approximation of Zadoff-Chu location."
     )
-    approx_zc = int(
-        np.argmax(uniform_filter1d(np.abs(data), int(len(data) / ratio_approx)))
-        - int(len(data) / ratio_approx) / 2
-    )
+
+    uniform_filter_length = int(zc_length * resample)
+    envelope = uniform_filter1d(np.abs(data), uniform_filter_length)
+    approx_zc = int(np.argmax(envelope) - uniform_filter_length / 2)
     logger.debug("Approximative position found at %i.", approx_zc)
     zadoff_chu = zcsequence(zc_root, zc_length)
-    zadoff_chu = np.repeat(zadoff_chu, int(resample))
+    #zadoff_chu = np.repeat(zadoff_chu, int(resample))
+    zadoff_chu = upsample(zadoff_chu, resample, 0)
 
     n = len(zadoff_chu)
     logger.debug(
