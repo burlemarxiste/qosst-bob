@@ -1234,17 +1234,28 @@ def _dsp_bob_general(
 
 
 def find_global_angle(
-    received_data: np.ndarray, sent_data: np.ndarray, precision: float = 0.001
-) -> Tuple[float, float]:
+    received_data: np.ndarray,
+    sent_data: np.ndarray,
+    precision: float = 0.001,
+    exhaustive_search: bool = False) -> Tuple[float, float]:
     """
     Find global angle between received and sent data by exhaustive search.
 
-    The best angle is found when the real part of the covariance is the highset
-    between the two sets.
-    A certain number of angles will be tested to statisfy the required precision.
-    In fact the number of tested points will ceil(2*pi/precision) with an actual
-    precision of 2*pi/(number of points) with a precision lower or equal to the
-    targeted precision.
+    Two algorithms are implemented:
+
+    1/ Exhaustive search (original algorithm)
+
+    The best angle is found when the real part of the covariance is the highest
+    between the two sets. A certain number of angles will be tested to satisfy
+    the required precision. In fact the number of tested points will
+    ceil(2*pi/precision) with an actual precision of 2*pi/(number of points)
+    with a precision lower or equal to the target precision.
+
+    2/ Direct estimation
+
+    This computes the circular mean of the angle of the ratio of alice and
+    bob's symbols, then refines the estimate using exhaustive search as
+    detailed above.
 
     The returned value is an angle in radian, between -pi and pi.
 
@@ -1252,12 +1263,19 @@ def find_global_angle(
         received_data (np.ndarray): the symbols received by Bob after the DSP.
         sent_data (np.ndarray): the send symbols by Alice.
         precision (float, optional): the precision wanted on the angle, in radians. Defaults to 0.001.
+        exhaustive_search (bool, optional): whether the legacy exhaustive search algorithm should be used.
 
     Returns:
         Tuple[float,float]: the angle that maximises the covariance, in radians, and the maximal covariance.
     """
-    number_of_points = int(np.ceil(2 * np.pi / precision))
-    angles = np.linspace(-np.pi, np.pi, number_of_points)
+    n = len(sent_data)
+    if not exhaustive_search:
+        angle = np.angle(np.mean(sent_data / received_data))
+        angles = np.linspace(
+            angle - precision * 50, angle + precision * 50, 500)
+    else:
+        number_of_points = int(np.ceil(2 * np.pi / precision))
+        angles = np.linspace(-np.pi, np.pi, number_of_points)
 
     logger.debug(
         "Finding global angle with step of %f rad (targeted presicision %f rad).",
@@ -1267,15 +1285,12 @@ def find_global_angle(
 
     max_angle = 0
     max_cov = 0
-    a = sent_data
-    n = len(a)
     for angle in angles:
-        b = received_data * np.exp(1j * angle)
-        cov_0_1 = np.vdot(b - b.mean(), a - a.mean()) / (n - 1)
-        if cov_0_1.real > max_cov:
+        stack = np.stack((sent_data, received_data * np.exp(1j * angle)), axis=0)
+        cov = np.cov(stack)
+        if cov[0][1].real > max_cov:
             max_angle = angle
-            max_cov = cov_0_1.real
-
+            max_cov = cov[0][1].real
     logger.debug(
         "Global angle found : %.2f rad with covariance : %.2f", max_angle, max_cov
     )
