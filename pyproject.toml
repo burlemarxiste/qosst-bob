@@ -50,6 +50,7 @@ pylint = "^2.17.4"
 mypy = "^1.3.0"
 sphinxcontrib-programoutput = "^0.17"
 ipykernel = "^6.26.0"
+black = "^23.9.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -61,3 +62,4 @@ qosst-bob-excess-noise = "qosst_bob.excess_noise:main"
 qosst-bob-optimize = "qosst_bob.optimization.commands:main"
 qosst-bob-transmittance = "qosst_bob.transmittance:main"
 qosst-bob-tools = "qosst_bob.tools.commands:main"
+qosst-bob-offline-dsp = "qosst_bob.dsp.offline_dsp:main"
