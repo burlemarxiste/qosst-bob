@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
+from scipy.stats import vonmises
 
 from qosst_core.configuration import Configuration
 from qosst_core.schema.detection import (
@@ -1232,36 +1233,59 @@ def _dsp_bob_general(
 
 
 def find_global_angle(
-    received_data: np.ndarray, sent_data: np.ndarray, precision: float = 0.001
-) -> Tuple[float, float]:
+    received_data: np.ndarray,
+    sent_data: np.ndarray,
+    step_size: float = 0.001,
+    max_num_steps: int = 0) -> Tuple[float, float]:
     """
-    Find global angle between received and sent data by exhaustive search.
+    Find the global angle between received and sent data.
 
-    The best angle is found when the real part of the covariance is the highset
+    The best angle is found when the real part of the covariance is the highest
     between the two sets.
-    A certain number of angles will be tested to statisfy the required precision.
-    In fact the number of tested points will ceil(2*pi/precision) with an actual
-    precision of 2*pi/(number of points) with a precision lower or equal to the
-    targeted precision.
 
-    The returned value is an angle in radian, between -pi and pi.
+    The algorithm starts the search at an angle corresponding to the circular
+    mean of the angle between the symbols.
+
+    An exhaustive search is then performed around this estimate, using
+    at most max_num_steps steps spaced by step_size radians.
+
+    To skip the exhaustive search and keep the circular mean estimate, set
+    max_num_steps = 0.
 
     Args:
         received_data (np.ndarray): the symbols received by Bob after the DSP.
         sent_data (np.ndarray): the send symbols by Alice.
-        precision (float, optional): the precision wanted on the angle, in radians. Defaults to 0.001.
+        step_size (float, optional): the exhaustive search step size, in radians.
+        max_num_steps (int, optional): the maximum number of steps allowed for the exhaustive search.
 
     Returns:
         Tuple[float,float]: the angle that maximises the covariance, in radians, and the maximal covariance.
     """
-    number_of_points = int(np.ceil(2 * np.pi / precision))
-    angles = np.linspace(-np.pi, np.pi, number_of_points)
+    # Number of points to cover the whole circle with the required step size.
+    num_points = int(np.ceil(2 * np.pi / step_size))
 
-    logger.debug(
-        "Finding global angle with step of %f rad (targeted presicision %f rad).",
-        angles[1] - angles[0],
-        precision,
-    )
+    if max_num_steps >= num_points:
+        # max_num_steps is large enough to allow an exhaustive search.
+        angles = np.linspace(-np.pi, np.pi, num_points)
+    else:
+        # max_num_steps and step_size are such that we restrict our search to
+        # a subset of the circle. In that case, an initial value is needed.
+        _, loc, _ = vonmises.fit(np.angle(sent_data / received_data))
+
+        # Nearest multiple of 2
+        max_num_steps -= max_num_steps % 1
+        angles = np.linspace(
+            loc - (max_num_steps // 2) * step_size,
+            loc + (max_num_steps // 2) * step_size,
+            max_num_steps + 1)
+        logger.debug("Initial estimate of global angle: %f.", loc)
+
+    if len(angles) >= 2:
+        logger.debug(
+            "Finding global angle with steps of %f rad (target precision %f rad).",
+            angles[1] - angles[0],
+            step_size,
+        )
 
     max_angle = 0
     max_cov = 0
@@ -1272,6 +1296,8 @@ def find_global_angle(
             max_angle = angle
             max_cov = cov[0][1].real
 
+    # If necessary, wrap the angle to [-π, π[
+    max_angle = (np.pi + max_angle) % (2 * np.pi) - np.pi
     logger.debug(
         "Global angle found : %.2f rad with covariance : %.2f", max_angle, max_cov
     )
