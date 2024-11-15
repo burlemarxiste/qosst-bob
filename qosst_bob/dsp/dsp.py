@@ -1010,25 +1010,23 @@ def _dsp_bob_general(
     f_pilot_1 = pilots_frequencies[0]
     f_pilot_2 = pilots_frequencies[1]
 
-    # Take a reduce data for ZC and for clock recovery
-
-    # Find the two real frequency
-    # Let's take a smaller part of the signal to compute the difference of frequency of our two pilots
-
-    ratio_approx = 50
-    num_points = 10000000
-
     # Use the base DAC rate if the sample rate of the ZC sequence has not been
     # provided.
     if zc_rate == 0:
         zc_rate = dac_rate
     sps_approx = int(adc_rate / zc_rate)
-    approx_zc = int(
-        np.argmax(uniform_filter1d(np.abs(data), int(len(data) / ratio_approx)))
-        - int(len(data) / ratio_approx) / 2
-    )
+
+    # A first approximate search of the start of the ZC sequence, based on the
+    # signal envelope.
+    uniform_filter_length = int(zc_length * sps_approx)
+    envelope = uniform_filter1d(np.abs(data), uniform_filter_length)
+    approx_zc = int(np.argmax(envelope) - uniform_filter_length / 2)
+
+    # The pilot frequencies are estimated on a large sample (10M points),
+    # taken after the ZC sequence.
     pilot_start_point = approx_zc + 2 * zc_length * sps_approx
-    data_pilots = data[pilot_start_point:pilot_start_point+num_points]
+    num_points_pilot_search = 10_000_000
+    data_pilots = data[pilot_start_point:pilot_start_point+num_points_pilot_search]
     f_pilot_real_1, f_pilot_real_2 = find_two_pilots(data_pilots, adc_rate, excl=excl)
     logger.info(
         "Pilots found at %f MHz and %f MHz",
@@ -1066,7 +1064,7 @@ def _dsp_bob_general(
 
     logger.info("Equivalent SPS is %.6f", sps)
 
-    # Find again the real values
+    # Find again the real values.
     f_pilot_real_1, f_pilot_real_2 = find_two_pilots(data, equi_adc_rate, excl=excl)
     logger.info(
         "Pilots found at %f MHz and %f MHz",
