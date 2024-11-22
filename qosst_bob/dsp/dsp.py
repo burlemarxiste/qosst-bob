@@ -465,7 +465,7 @@ def _dsp_bob_shared_clock_shared_lo(
         )
 
         subframe_data = (
-            1 / np.sqrt(sps) * np.convolve(subframe_data, filtre[1:], "same")
+            1 / np.sqrt(sps) * oaconvolve(subframe_data, filtre[1:], "same")
         )
 
         max_t = _best_sampling_point_int(subframe_data, sps)
@@ -673,7 +673,7 @@ def _dsp_bob_shared_clock_unshared_lo(
         )
 
         subframe_data = (
-            1 / np.sqrt(sps) * np.convolve(subframe_data, filtre[1:], "same")
+            1 / np.sqrt(sps) * oaconvolve(subframe_data, filtre[1:], "same")
         )
 
         max_t = best_sampling_point(subframe_data, sps)
@@ -878,7 +878,7 @@ def _dsp_bob_unshared_clock_shared_lo(
         )
 
         subframe_data = (
-            1 / np.sqrt(sps) * np.convolve(subframe_data, filtre[1:], "same")
+            1 / np.sqrt(sps) * oaconvolve(subframe_data, filtre[1:], "same")
         )
 
         max_t = _best_sampling_point_float(subframe_data, sps)
@@ -1179,7 +1179,7 @@ def _dsp_bob_general(
         )
 
         subframe_data = (
-            1 / np.sqrt(sps) * np.convolve(subframe_data, filtre[1:], "same")
+            1 / np.sqrt(sps) * oaconvolve(subframe_data, filtre[1:], "same")
         )
 
         max_t = _best_sampling_point_float(subframe_data, sps)
