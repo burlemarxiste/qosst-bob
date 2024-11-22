@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 from scipy.stats import vonmises
+from scipy.signal import oaconvolve
 
 from qosst_core.configuration import Configuration
 from qosst_core.schema.detection import (
@@ -1329,7 +1330,40 @@ def special_dsp(
         params.roll_off,
         params.frequency_shift,
         params.schema,
+        params.elec_noise_estimation_ratio,
+        params.elec_shot_noise_estimation_ratio
     )
+
+
+def _subsample(data: np.ndarray, ratio: float, position: str) -> np.ndarray:
+    """
+    Extract a contiguous subsample of an array, the size of which is a
+    ratio of the original array length.
+
+    The position string describes from where the samples should be taken:
+    * 'h' or 'head' for the beginning of the data.
+    * 'm' or 'middle' for the middle of the data.
+    * 't' or 'tail' for the end of the data.
+
+    Args:
+        data (np.ndarray): array from which to extract the subsample
+        ratio (float): ratio of sizes between the subsample and original array
+        position (str): 'head', 'middle' or 'tail'
+    """
+    n = len(data)
+
+    if position in ['m', 'middle']:
+        index_from = int(n / 2 * (1 - ratio))
+        index_to = int(n / 2 * (1 + ratio))
+    elif position in ['h', 'head']:
+        index_from = 0
+        index_to = int(n * ratio)
+    elif position in ['t', 'tail']:
+        index_from = int(n * (1 - ratio))
+        index_to = n
+    else:
+        raise ValueError(f"position must be one of 'head', 'middle' or 'tail' (got '{ position }')")
+    return data[index_from:index_to]
 
 
 def _special_dsp_params(
@@ -1340,10 +1374,11 @@ def _special_dsp_params(
     roll_off: float,
     frequency_shift: float,
     _schema: DetectionSchema,
+    elec_noise_estimation_ratio: float,
+    elec_shot_noise_estimation_ratio: float
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Special DSP to apply the electronic and electronic and shot noises
-    taking the parameters.
+    Special DSP to apply on the electronic and electronic and shot noise samples
 
     Args:
         elec_noise_data (np.ndarray): array of the electronic noise.
@@ -1353,6 +1388,8 @@ def _special_dsp_params(
         roll_off (float): roll-off factor of the RRC filter.
         frequency_shift (float): frequency shift of the quantum data, in Hz.
         schema (DetectionSchema): schema to know how to interpret the data.
+        elec_noise_estimation_ratio (float): proportion of electronic noise samples to keep for estimation.
+        elec_shot_noise_estimation_ratio (float): proportion of electronic and shot noise samples to keep for estimation.
 
     Returns:
         Tuple[np.ndarray, np.ndarray]: the electronic symbols and electronic and shot symbols.
@@ -1360,46 +1397,46 @@ def _special_dsp_params(
     logger.info("Starting DSP on elec and elec+shot noise.")
 
     sps = adc_rate / symbol_rate
-    _, filtre = root_raised_cosine_filter(
+
+    # For efficiency reasons, the DSP on this section is performed
+    # on float32s/complex64s.
+    elec_noise_data = _subsample(elec_noise_data, elec_noise_estimation_ratio, 'tail')
+    elec_noise_data = elec_noise_data.astype(np.complex64)
+    n_elec_noise_data = len(elec_noise_data)
+
+    elec_shot_noise_data = _subsample(elec_shot_noise_data, elec_shot_noise_estimation_ratio, 'tail')
+    elec_shot_noise_data = elec_shot_noise_data.astype(np.complex64)
+    n_elec_shot_noise_data = len(elec_shot_noise_data)
+
+    # Precompute the filter and complex exponential for shifting.
+    _, rrc_filter = root_raised_cosine_filter(
         int(10 * sps + 2),
         roll_off,
         1 / symbol_rate,
         adc_rate,
     )
+    rrc_filter = rrc_filter[1:].astype('f')
+
+    n_shift = max(n_elec_noise_data, n_elec_shot_noise_data)
+    shift = np.exp(
+        -1j
+        * 2
+        * np.pi
+        * np.arange(n_shift)
+        * frequency_shift
+        / adc_rate).astype(np.complex64)
 
     logger.info("Starting DSP on elec noise.")
-    elec_noise_bb = elec_noise_data * np.exp(
-        -1j
-        * 2
-        * np.pi
-        * np.arange(len(elec_noise_data))
-        * frequency_shift
-        / adc_rate
-    )
-
-    # RRC filter
+    elec_noise_bb = elec_noise_data * shift[:n_elec_noise_data]
     elec_noise_filtered = (
-        1 / np.sqrt(sps) * np.convolve(elec_noise_bb, filtre[1:], "same")
+        1 / np.sqrt(sps) * oaconvolve(elec_noise_bb, rrc_filter, "same")
     )
-
-    elec_symbols = downsample(elec_noise_filtered, 0, sps)
-
     logger.info("Starting DSP on elec+shot noise.")
 
-    elec_shot_noise_bb = elec_shot_noise_data * np.exp(
-        -1j
-        * 2
-        * np.pi
-        * np.arange(len(elec_shot_noise_data))
-        * frequency_shift
-        / adc_rate
-    )
-
-    # RRC filter
+    elec_shot_noise_bb = elec_shot_noise_data * shift[:n_elec_shot_noise_data]
     elec_shot_noise_filtered = (
-        1 / np.sqrt(sps) * np.convolve(elec_shot_noise_bb, filtre[1:], "same")
+        1 / np.sqrt(sps) * oaconvolve(elec_shot_noise_bb, rrc_filter, "same")
     )
-    elec_shot_symbols = downsample(elec_shot_noise_filtered, 0, sps)
-
     logger.info("DSP on elec and elec+shot noise finished.")
-    return elec_symbols, elec_shot_symbols
+
+    return elec_noise_filtered, elec_shot_noise_filtered
