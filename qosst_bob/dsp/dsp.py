@@ -110,9 +110,11 @@ class SpecialDSPParams:
     roll_off: float  #: Roll off of the RRC filter.
     frequency_shift: float  #: Frequency shift of the data, recovered in case clock is not shared and/or LLO setup.
     schema: DetectionSchema  #: Detection schema to know how to interpret the data.
+    elec_noise_estimation_ratio: Optional[float] = 1.0  #: Ratio of electronic noise samples to analyze
+    elec_shot_noise_estimation_ratio: Optional[float] = 1.0  #: Ratio of electronic and shot noise samples to analyze
 
     def __str__(self) -> str:
-        return f"Symbol rate = {self.symbol_rate*1e-6} MBaud, ADC Rate = {self.adc_rate*1e-9} GSamples/s, Roll Off = {self.roll_off}, Frequency shift = {self.frequency_shift*1e-6} MHz, Detection schema = {str(self.schema)}"
+        return f"Symbol rate = {self.symbol_rate*1e-6} MBaud, ADC Rate = {self.adc_rate*1e-9} GSamples/s, Roll Off = {self.roll_off}, Frequency shift = {self.frequency_shift*1e-6} MHz, Detection schema = {str(self.schema)}, Ratio of electronic noise samples kept = {self.elec_noise_estimation_ratio}, Ratio of electronic and shot noise samples kept = {self.elec_shot_noise_estimation_ratio}"
 
 
 def dsp_bob(
